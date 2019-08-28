@@ -39,7 +39,27 @@ func init(){
 	}
 }
 
+var confFile string;
+
 func main() {
+	confFile = "";
+	if len(os.Args) == 2 {
+		if os.Args[1] == "--help" {
+			fmt.Printf("\n\tUsage: %s [OPTION]\n\n\tOPTIONS\n\n\t-c\tSet config file\n\n", os.Args[0]);
+			os.Exit(1)
+		}
+		if os.Args[1] == "-c" {
+			if len(os.Args) == 2 {
+				fmt.Printf("\n\n\tNo file given with -c option!\n\n");
+				os.Exit(-1);
+			}
+			confFile = os.Args[2];
+		}
+	}
+	if confFile == ""  {
+		confFile = "enclave.conf";
+	}
+
 	publicRouter := httprouter.New();
 	publicRouter.ServeFiles("/static/*filepath", http.Dir("static"));
 	publicRouter.GET("/", indexGet);
@@ -109,7 +129,8 @@ func SignInPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	fmt.Println("Logging in ", email)
 //	t, err := template.ParseFiles("profile.tmpl");
 //	t.Execute(w, );
-	http.ServeFile(w, r, "/profile");
+//	http.ServeFile(w, r, "/profile");
+	fmt.Fprintf(w, "Signed IN!");
 	}
 }
 ///
@@ -188,13 +209,13 @@ func ResetPassPost(w http.ResponseWriter, r *http.Request, _ httprouter.Params) 
 
 
 ///Reset URL
-func OneTimeGet(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func OneTimeGet(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 //	oneTime := ps.ByName("onetime");
 	http.ServeFile(w, r, "onetime.html");
 }
 
 func OneTimePost(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	r.ParseForm();
+		r.ParseForm();
 	password := r.FormValue("password");
 	hashword := hashPassword(password);
 	oneTime := ps.ByName("onetime");
@@ -234,15 +255,35 @@ func ProfileGet (w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		fmt.Println("AUTHED");
 	}
 	*/
-	sessionCookie, _ := r.Cookie("session");
-	session := sessionCookie.Value;
+	tokenCookie, _ := r.Cookie("token");
+//	session := tokenCookie.Value;
 	emailCookie, _ := r.Cookie("email");
-	email := emailCookie.Value;
-	if checkSession(email, session) {
+	if auth(tokenCookie, emailCookie) {
 		fmt.Println("AUTHED");
+		fmt.Fprintf(w, "AUTHED");
 	} else {
-		fmt.Println("UNAUTHED");
+		fmt.Println("UNAUTHED PROFILE LOGIN");
+		fmt.Fprintf(w, "UNAUTHED");
 	}
+}
+
+func auth(tokenCookie *http.Cookie, emailCookie *http.Cookie) bool {
+	if tokenCookie != nil {
+		if emailCookie != nil {
+			fmt.Println(emailCookie.Value);
+			fmt.Println(tokenCookie.Value);
+			if checkSession(emailCookie.Value, tokenCookie.Value) {
+				fmt.Println("AUTHED");
+				return true;
+			} else {
+				fmt.Println("UNAUTHED");
+				return false;
+			}
+		} else {
+			return false;
+		}
+	}
+	return false;
 
 }
 ///
@@ -284,17 +325,6 @@ func genToken(len int) string {
 	return string(bytes);
 }
 
-func authPage(r *http.Request) bool {
-	sessionCookie, _ := r.Cookie("session");
-	session := sessionCookie.Value;
-	emailCookie, _ := r.Cookie("email");
-	email := emailCookie.Value;
-	if checkSession(email, session) {
-		return true;
-	} else {
-		return false;
-	}
-}
 
 ///SendMail
 func sendMail(body string, to string) {
@@ -347,7 +377,7 @@ func sendSMS(msg string, to string) {
 
 ///Config Reader
 func ReadConf(item string) string {
-	f, err := os.Open("enclave.conf");
+	f, err := os.Open(confFile);
 	if err != nil {
 		fmt.Printf("Could not open enclave.conf!\n");
 	}
